@@ -22,10 +22,6 @@
 
 #ifdef SDL_VIDEO_DRIVER_COCOA
 
-#if !__has_feature(objc_arc)
-#error SDL must be built with Objective-C ARC (automatic reference counting) enabled
-#endif
-
 #include "SDL_cocoavideo.h"
 #include "SDL_cocoavulkan.h"
 #include "SDL_cocoametalview.h"
@@ -37,6 +33,16 @@
 #include "../../events/SDL_mouse_c.h"
 
 @implementation SDL_CocoaVideoData
+@synthesize allow_spaces;
+@synthesize trackpad_is_touch_only;
+@synthesize modifierFlags;
+@synthesize key_layout;
+@synthesize fieldEdit;
+@synthesize clipboard_count;
+@synthesize screensaver_assertion;
+@synthesize swaplock;
+@synthesize option_as_alt;
+@synthesize mainDisplayHeight;
 
 @end
 
@@ -48,17 +54,17 @@ static void Cocoa_VideoQuit(SDL_VideoDevice *_this);
 
 static void Cocoa_DeleteDevice(SDL_VideoDevice *device)
 {
-    @autoreleasepool {
-        CFBridgingRelease(device->internal);
-        SDL_free(device);
-    }
+    NSAutoreleasePool *pool = [[NSAutoreleasePool alloc] init];
+    CFBridgingRelease(device->internal);
+    SDL_free(device);
+    [pool drain];
 }
 
 static SDL_VideoDevice *Cocoa_CreateDevice(void)
 {
-    @autoreleasepool {
-        SDL_VideoDevice *device;
-        SDL_CocoaVideoData *data;
+    NSAutoreleasePool *pool = [[NSAutoreleasePool alloc] init];
+    SDL_VideoDevice *device;
+    SDL_CocoaVideoData *data;
 
         if (![NSThread isMainThread]) {
             return NULL;  // this doesn't SDL_SetError() because SDL_VideoInit is just going to overwrite it.
@@ -184,8 +190,8 @@ static SDL_VideoDevice *Cocoa_CreateDevice(void)
 
         device->device_caps = VIDEO_DEVICE_CAPS_HAS_POPUP_WINDOW_SUPPORT |
                               VIDEO_DEVICE_CAPS_SENDS_FULLSCREEN_DIMENSIONS;
+        [pool drain];
         return device;
-    }
 }
 
 VideoBootStrap COCOA_bootstrap = {
@@ -197,8 +203,8 @@ VideoBootStrap COCOA_bootstrap = {
 
 static bool Cocoa_VideoInit(SDL_VideoDevice *_this)
 {
-    @autoreleasepool {
-        SDL_CocoaVideoData *data = (__bridge SDL_CocoaVideoData *)_this->internal;
+    NSAutoreleasePool *pool = [[NSAutoreleasePool alloc] init];
+    SDL_CocoaVideoData *data = (__bridge SDL_CocoaVideoData *)_this->internal;
 
         Cocoa_InitModes(_this);
         Cocoa_InitKeyboard(_this);
@@ -224,17 +230,18 @@ static bool Cocoa_VideoInit(SDL_VideoDevice *_this)
 
         data.swaplock = SDL_CreateMutex();
         if (!data.swaplock) {
+            [pool drain];
             return false;
         }
 
+        [pool drain];
         return true;
-    }
 }
 
 void Cocoa_VideoQuit(SDL_VideoDevice *_this)
 {
-    @autoreleasepool {
-        SDL_CocoaVideoData *data = (__bridge SDL_CocoaVideoData *)_this->internal;
+    NSAutoreleasePool *pool = [[NSAutoreleasePool alloc] init];
+    SDL_CocoaVideoData *data = (__bridge SDL_CocoaVideoData *)_this->internal;
         Cocoa_QuitModes(_this);
         Cocoa_QuitKeyboard(_this);
         Cocoa_QuitGCMouse();
@@ -242,19 +249,12 @@ void Cocoa_VideoQuit(SDL_VideoDevice *_this)
         Cocoa_QuitPen(_this);
         SDL_DestroyMutex(data.swaplock);
         data.swaplock = NULL;
-    }
+    [pool drain];
 }
 
 // This function assumes that it's called from within an autorelease pool
 SDL_SystemTheme Cocoa_GetSystemTheme(void)
 {
-    if (@available(macOS 10.14, *)) {
-        NSAppearance *appearance = [[NSApplication sharedApplication] effectiveAppearance];
-
-        if ([appearance.name containsString: @"Dark"]) {
-            return SDL_SYSTEM_THEME_DARK;
-        }
-    }
     return SDL_SYSTEM_THEME_LIGHT;
 }
 
@@ -324,15 +324,15 @@ NSImage *Cocoa_CreateImage(SDL_Surface *surface)
 
 void SDL_NSLog(const char *prefix, const char *text)
 {
-    @autoreleasepool {
-        NSString *nsText = [NSString stringWithUTF8String:text];
-        if (prefix && *prefix) {
-            NSString *nsPrefix = [NSString stringWithUTF8String:prefix];
-            NSLog(@"%@%@", nsPrefix, nsText);
-        } else {
-            NSLog(@"%@", nsText);
-        }
+    NSAutoreleasePool *pool = [[NSAutoreleasePool alloc] init];
+    NSString *nsText = [NSString stringWithUTF8String:text];
+    if (prefix && *prefix) {
+        NSString *nsPrefix = [NSString stringWithUTF8String:prefix];
+        NSLog(@"%@%@", nsPrefix, nsText);
+    } else {
+        NSLog(@"%@", nsText);
     }
+    [pool drain];
 }
 
 #endif // SDL_VIDEO_DRIVER_COCOA

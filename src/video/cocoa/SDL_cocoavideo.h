@@ -29,6 +29,73 @@
 #include <IOKit/pwr_mgt/IOPMLib.h>
 #include <Cocoa/Cocoa.h>
 
+#ifndef __has_feature
+#define __has_feature(x) 0
+#endif
+
+#if !__has_feature(objc_arc)
+#ifndef __bridge
+#define __bridge
+#endif
+#ifndef __bridge_retained
+#define __bridge_retained
+#endif
+#ifndef __bridge_transfer
+#define __bridge_transfer
+#endif
+#ifndef __weak
+#define __weak
+#endif
+#ifndef __strong
+#define __strong
+#endif
+#ifndef CFBridgingRetain
+#define CFBridgingRetain(x) ([(x) retain])
+#endif
+#ifndef CFBridgingRelease
+#define CFBridgingRelease(x) ([(id)(x) autorelease])
+#endif
+#endif
+
+#ifndef NSEventTypeLeftMouseDown
+#define NSEventTypeLeftMouseDown NSLeftMouseDown
+#define NSEventTypeLeftMouseUp NSLeftMouseUp
+#define NSEventTypeRightMouseDown NSRightMouseDown
+#define NSEventTypeRightMouseUp NSRightMouseUp
+#define NSEventTypeMouseMoved NSMouseMoved
+#define NSEventTypeLeftMouseDragged NSLeftMouseDragged
+#define NSEventTypeRightMouseDragged NSRightMouseDragged
+#define NSEventTypeMouseEntered NSMouseEntered
+#define NSEventTypeMouseExited NSMouseExited
+#define NSEventTypeKeyDown NSKeyDown
+#define NSEventTypeKeyUp NSKeyUp
+#define NSEventTypeFlagsChanged NSFlagsChanged
+#define NSEventTypeApplicationDefined NSApplicationDefined
+#define NSEventTypeScrollWheel NSScrollWheel
+#define NSEventTypeOtherMouseDown NSOtherMouseDown
+#define NSEventTypeOtherMouseUp NSOtherMouseUp
+#define NSEventTypeOtherMouseDragged NSOtherMouseDragged
+#define NSEventTypeTabletPoint NSTabletPoint
+#define NSEventTypeTabletProximity NSTabletProximity
+#endif
+
+#ifndef NSEventMaskAny
+#define NSEventMaskAny NSAnyEventMask
+#endif
+
+#ifndef NSEventModifierFlagCapsLock
+#define NSEventModifierFlagCapsLock NSAlphaShiftKeyMask
+#endif
+#ifndef NSEventModifierFlagOption
+#define NSEventModifierFlagOption NSAlternateKeyMask
+#endif
+#ifndef NSEventModifierFlagCommand
+#define NSEventModifierFlagCommand NSCommandKeyMask
+#endif
+#ifndef NSEventModifierFlagControl
+#define NSEventModifierFlagControl NSControlKeyMask
+#endif
+
 #include "../SDL_sysvideo.h"
 
 #include "SDL_cocoaclipboard.h"
@@ -53,6 +120,18 @@ typedef enum
 } OptionAsAlt;
 
 @interface SDL_CocoaVideoData : NSObject
+{
+    int allow_spaces;
+    int trackpad_is_touch_only;
+    unsigned int modifierFlags;
+    void *key_layout;
+    SDL3TranslatorResponder *fieldEdit;
+    NSInteger clipboard_count;
+    IOPMAssertionID screensaver_assertion;
+    SDL_Mutex *swaplock;
+    OptionAsAlt option_as_alt;
+    CGFloat mainDisplayHeight;
+}
 @property(nonatomic) int allow_spaces;
 @property(nonatomic) int trackpad_is_touch_only;
 @property(nonatomic) unsigned int modifierFlags;

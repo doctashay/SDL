@@ -174,7 +174,7 @@
               (int)aRange.location, (int)aRange.length, windowHeight,
               NSStringFromRect(rect));
 
-    rect = [window convertRectToScreen:rect];
+    rect.origin = [window convertBaseToScreen:rect.origin];
 
     return rect;
 }
@@ -410,7 +410,7 @@ void Cocoa_InitKeyboard(SDL_VideoDevice *_this)
     SDL_SetScancodeName(SDL_SCANCODE_RALT, "Right Option");
     SDL_SetScancodeName(SDL_SCANCODE_RGUI, "Right Command");
 
-    data.modifierFlags = (unsigned int)[NSEvent modifierFlags];
+    data.modifierFlags = 0;
     SDL_ToggleModState(SDL_KMOD_CAPS, (data.modifierFlags & NSEventModifierFlagCapsLock) ? true : false);
 
     SDL_AddHintCallback(SDL_HINT_MAC_OPTION_AS_ALT, SDL_MacOptionAsAltChanged, _this);
@@ -418,7 +418,7 @@ void Cocoa_InitKeyboard(SDL_VideoDevice *_this)
 
 bool Cocoa_StartTextInput(SDL_VideoDevice *_this, SDL_Window *window, SDL_PropertiesID props)
 {
-    @autoreleasepool {
+    NSAutoreleasePool *pool = [[NSAutoreleasePool alloc] init];
         NSView *parentView;
         SDL_CocoaVideoData *data = (__bridge SDL_CocoaVideoData *)_this->internal;
         NSWindow *nswindow = ((__bridge SDL_CocoaWindowData *)window->internal).nswindow;
@@ -440,20 +440,20 @@ bool Cocoa_StartTextInput(SDL_VideoDevice *_this, SDL_Window *window, SDL_Proper
             [parentView addSubview:data.fieldEdit];
             [nswindow makeFirstResponder:data.fieldEdit];
         }
-    }
+    [pool drain];
     return Cocoa_UpdateTextInputArea(_this, window);
 }
 
 bool Cocoa_StopTextInput(SDL_VideoDevice *_this, SDL_Window *window)
 {
-    @autoreleasepool {
+    NSAutoreleasePool *pool = [[NSAutoreleasePool alloc] init];
         SDL_CocoaVideoData *data = (__bridge SDL_CocoaVideoData *)_this->internal;
 
         if (data && data.fieldEdit) {
             [data.fieldEdit removeFromSuperview];
             data.fieldEdit = nil;
         }
-    }
+    [pool drain];
     return true;
 }
 

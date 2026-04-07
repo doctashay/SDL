@@ -76,10 +76,10 @@ static void Cocoa_HandlePenProximityEvent(SDL_CocoaWindowData *_data, NSEvent *e
     const NSUInteger devid = [event deviceID];
     const NSUInteger toolid = [event pointingDeviceID];
 
-    if (event.enteringProximity) {  // new pen coming!
+    if ([event isEnteringProximity]) {  // new pen coming!
         const NSPointingDeviceType devtype = [event pointingDeviceType];
-        const bool is_eraser = (devtype == NSPointingDeviceTypeEraser);
-        const bool is_pen = (devtype == NSPointingDeviceTypePen);
+        const bool is_eraser = (devtype == NSEraserPointingDevice);
+        const bool is_pen = (devtype == NSPenPointingDevice);
         if (!is_eraser && !is_pen) {
             return;  // we ignore other things, which hopefully is right.
         }
@@ -130,21 +130,21 @@ static void Cocoa_HandlePenPointEvent(SDL_CocoaWindowData *_data, NSEvent *event
     }
 
     const SDL_PenID pen = handle->pen;
-    const NSEventButtonMask buttons = [event buttonMask];
+    const NSUInteger buttons = [event buttonMask];
     const NSPoint tilt = [event tilt];
     const NSPoint point = [event locationInWindow];
-    const bool is_touching = (buttons & NSEventButtonMaskPenTip) != 0;
+    const bool is_touching = (buttons & NSPenTipMask) != 0;
     SDL_Window *window = _data.window;
 
     SDL_SendPenTouch(timestamp, pen, window, handle->is_eraser, is_touching);
     SDL_SendPenMotion(timestamp, pen, window, (float) point.x, (float) (window->h - point.y));
-    SDL_SendPenButton(timestamp, pen, window, 1, ((buttons & NSEventButtonMaskPenLowerSide) != 0));
-    SDL_SendPenButton(timestamp, pen, window, 2, ((buttons & NSEventButtonMaskPenUpperSide) != 0));
+    SDL_SendPenButton(timestamp, pen, window, 1, ((buttons & NSPenLowerSideMask) != 0));
+    SDL_SendPenButton(timestamp, pen, window, 2, ((buttons & NSPenUpperSideMask) != 0));
     SDL_SendPenAxis(timestamp, pen, window, SDL_PEN_AXIS_PRESSURE, [event pressure]);
     SDL_SendPenAxis(timestamp, pen, window, SDL_PEN_AXIS_ROTATION, [event rotation]);
     SDL_SendPenAxis(timestamp, pen, window, SDL_PEN_AXIS_XTILT, ((float) tilt.x) * 90.0f);
     SDL_SendPenAxis(timestamp, pen, window, SDL_PEN_AXIS_YTILT, ((float) -tilt.y) * 90.0f);
-    SDL_SendPenAxis(timestamp, pen, window, SDL_PEN_AXIS_TANGENTIAL_PRESSURE, event.tangentialPressure);
+    SDL_SendPenAxis(timestamp, pen, window, SDL_PEN_AXIS_TANGENTIAL_PRESSURE, [event tangentialPressure]);
 }
 
 bool Cocoa_HandlePenEvent(SDL_CocoaWindowData *_data, NSEvent *event)
@@ -152,10 +152,10 @@ bool Cocoa_HandlePenEvent(SDL_CocoaWindowData *_data, NSEvent *event)
     NSEventType type = [event type];
 
     if ((type != NSEventTypeTabletPoint) && (type != NSEventTypeTabletProximity)) {
-        const NSEventSubtype subtype = [event subtype];
-        if (subtype == NSEventSubtypeTabletPoint) {
+        const short subtype = [event subtype];
+        if (subtype == NSTabletPointEventSubtype) {
             type = NSEventTypeTabletPoint;
-        } else if (subtype == NSEventSubtypeTabletProximity) {
+        } else if (subtype == NSTabletProximityEventSubtype) {
             type = NSEventTypeTabletProximity;
         } else {
             return false;  // not a tablet event.

@@ -27,7 +27,9 @@
 
 #include "../../events/SDL_mouse_c.h"
 
+#if MAC_OS_X_VERSION_MAX_ALLOWED >= 110000
 #import <GameController/GameController.h>
+#endif
 
 #if 0
 #define DEBUG_COCOAMOUSE
@@ -40,6 +42,68 @@
     do {          \
     } while (0)
 #endif
+
+@interface NSEvent (SDLLeopardMouseCompat)
+- (CGFloat)scrollingDeltaX;
+- (CGFloat)scrollingDeltaY;
+- (BOOL)isDirectionInvertedFromDevice;
+- (BOOL)hasPreciseScrollingDeltas;
+@end
+
+static NSUInteger Cocoa_GetPressedMouseButtons(void)
+{
+    NSUInteger buttons = 0;
+
+    if (CGEventSourceButtonState(kCGEventSourceStateCombinedSessionState, kCGMouseButtonLeft)) {
+        buttons |= (1 << 0);
+    }
+    if (CGEventSourceButtonState(kCGEventSourceStateCombinedSessionState, kCGMouseButtonRight)) {
+        buttons |= (1 << 1);
+    }
+    if (CGEventSourceButtonState(kCGEventSourceStateCombinedSessionState, kCGMouseButtonCenter)) {
+        buttons |= (1 << 2);
+    }
+    if (CGEventSourceButtonState(kCGEventSourceStateCombinedSessionState, 3)) {
+        buttons |= (1 << 3);
+    }
+    if (CGEventSourceButtonState(kCGEventSourceStateCombinedSessionState, 4)) {
+        buttons |= (1 << 4);
+    }
+
+    return buttons;
+}
+
+static CGFloat Cocoa_GetScrollDeltaX(NSEvent *event)
+{
+    if ([event respondsToSelector:@selector(scrollingDeltaX)]) {
+        return [(id)event scrollingDeltaX];
+    }
+    return [event deltaX];
+}
+
+static CGFloat Cocoa_GetScrollDeltaY(NSEvent *event)
+{
+    if ([event respondsToSelector:@selector(scrollingDeltaY)]) {
+        return [(id)event scrollingDeltaY];
+    }
+    return [event deltaY];
+}
+
+static BOOL Cocoa_EventHasPreciseScrollingDeltas(NSEvent *event)
+{
+    if ([event respondsToSelector:@selector(hasPreciseScrollingDeltas)]) {
+        return [(id)event hasPreciseScrollingDeltas];
+    }
+    return NO;
+}
+
+static BOOL Cocoa_EventIsDirectionInvertedFromDevice(NSEvent *event)
+{
+    if ([event respondsToSelector:@selector(isDirectionInvertedFromDevice)]) {
+        return [(id)event isDirectionInvertedFromDevice];
+    }
+    return NO;
+}
 
 @implementation NSCursor (InvisibleCursor)
 + (NSCursor *)invisibleCursor
@@ -70,10 +134,10 @@
 
 static SDL_Cursor *Cocoa_CreateAnimatedCursor(SDL_CursorFrameInfo *frames, int frame_count, int hot_x, int hot_y)
 {
-    @autoreleasepool {
-        NSImage *nsimage;
-        NSCursor *nscursor = NULL;
-        SDL_Cursor *cursor = NULL;
+    NSAutoreleasePool *pool = [[NSAutoreleasePool alloc] init];
+    NSImage *nsimage;
+    NSCursor *nscursor = NULL;
+    SDL_Cursor *cursor = NULL;
 
         cursor = SDL_calloc(1, sizeof(*cursor));
         if (cursor) {
@@ -107,10 +171,11 @@ static SDL_Cursor *Cocoa_CreateAnimatedCursor(SDL_CursorFrameInfo *frames, int f
                 }
             }
 
-            return cursor;
-        }
+        [pool drain];
+        return cursor;
     }
 
+    [pool drain];
     return NULL;
 }
 
@@ -165,9 +230,9 @@ static NSCursor *LoadHiddenSystemCursor(NSString *cursorName, SEL fallback)
 
 static SDL_Cursor *Cocoa_CreateSystemCursor(SDL_SystemCursor id)
 {
-    @autoreleasepool {
-        NSCursor *nscursor = NULL;
-        SDL_Cursor *cursor = NULL;
+    NSAutoreleasePool *pool = [[NSAutoreleasePool alloc] init];
+    NSCursor *nscursor = NULL;
+    SDL_Cursor *cursor = NULL;
 
         switch (id) {
         case SDL_SYSTEM_CURSOR_DEFAULT:
@@ -246,8 +311,8 @@ static SDL_Cursor *Cocoa_CreateSystemCursor(SDL_SystemCursor id)
             }
         }
 
-        return cursor;
-    }
+    [pool drain];
+    return cursor;
 }
 
 static SDL_Cursor *Cocoa_CreateDefaultCursor(void)
@@ -257,6 +322,7 @@ static SDL_Cursor *Cocoa_CreateDefaultCursor(void)
 }
 
 // GCMouse support for raw (unaccelerated) mouse input on macOS 11.0+
+#if MAC_OS_X_VERSION_MAX_ALLOWED >= 110000
 static id cocoa_mouse_connect_observer = nil;
 static id cocoa_mouse_disconnect_observer = nil;
 // Atomic for thread-safe access during high-frequency mouse input
@@ -468,27 +534,51 @@ void Cocoa_QuitGCMouse(void)
         }
     }
 }
+#else
+void Cocoa_InitGCMouse(void)
+{
+}
+
+bool Cocoa_GCMouseRelativeMode(void)
+{
+    return false;
+}
+
+bool Cocoa_HasGCMouse(void)
+{
+    return false;
+}
+
+static bool Cocoa_SetGCMouseRelativeMode(bool enabled)
+{
+    return false;
+}
+
+void Cocoa_QuitGCMouse(void)
+{
+}
+#endif
 
 static void Cocoa_FreeCursor(SDL_Cursor *cursor)
 {
-    @autoreleasepool {
-        SDL_CursorData *cdata = cursor->internal;
+    NSAutoreleasePool *pool = [[NSAutoreleasePool alloc] init];
+    SDL_CursorData *cdata = cursor->internal;
         if (cdata->frameTimer) {
             [cdata->frameTimer invalidate];
         }
         for (int i = 0; i < cdata->num_cursors; ++i) {
             CFBridgingRelease(cdata->frames[i].cursor);
         }
-        SDL_free(cdata);
-        SDL_free(cursor);
-    }
+    SDL_free(cdata);
+    SDL_free(cursor);
+    [pool drain];
 }
 
 static bool Cocoa_ShowCursor(SDL_Cursor *cursor)
 {
-    @autoreleasepool {
-        SDL_VideoDevice *device = SDL_GetVideoDevice();
-        SDL_Window *window = (device ? device->windows : NULL);
+    NSAutoreleasePool *pool = [[NSAutoreleasePool alloc] init];
+    SDL_VideoDevice *device = SDL_GetVideoDevice();
+    SDL_Window *window = (device ? device->windows : NULL);
 
         if (cursor != NULL) {
             SDL_CursorData *cdata = cursor->internal;
@@ -507,8 +597,8 @@ static bool Cocoa_ShowCursor(SDL_Cursor *cursor)
                                              waitUntilDone:NO];
             }
         }
-        return true;
-    }
+    [pool drain];
+    return true;
 }
 
 static SDL_Window *SDL_FindWindowAtPoint(const float x, const float y)
@@ -631,7 +721,7 @@ static bool Cocoa_CaptureMouse(SDL_Window *window)
 
 static SDL_MouseButtonFlags Cocoa_GetGlobalMouseState(float *x, float *y)
 {
-    const NSUInteger cocoaButtons = [NSEvent pressedMouseButtons];
+    const NSUInteger cocoaButtons = Cocoa_GetPressedMouseButtons();
     const NSPoint cocoaLocation = [NSEvent mouseLocation];
     SDL_MouseButtonFlags result = 0;
     SDL_VideoDevice *device = SDL_GetVideoDevice();
@@ -722,7 +812,7 @@ static void Cocoa_ReconcileButtonState(NSEvent *event)
 {
     // Send mouse up events for any buttons that are no longer pressed
     Uint32 buttons = SDL_GetMouseState(NULL, NULL);
-    if (buttons && ![NSEvent pressedMouseButtons]) {
+    if (buttons && !Cocoa_GetPressedMouseButtons()) {
         Uint8 button = SDL_BUTTON_LEFT;
         while (buttons) {
             if (buttons & 0x01) {
@@ -861,15 +951,15 @@ void Cocoa_HandleMouseWheel(SDL_Window *window, NSEvent *event)
     SDL_MouseWheelDirection direction;
     CGFloat x, y;
 
-    x = -[event scrollingDeltaX];
-    y = [event scrollingDeltaY];
+    x = -Cocoa_GetScrollDeltaX(event);
+    y = Cocoa_GetScrollDeltaY(event);
     direction = SDL_MOUSEWHEEL_NORMAL;
 
-    if ([event isDirectionInvertedFromDevice] == YES) {
+    if (Cocoa_EventIsDirectionInvertedFromDevice(event) == YES) {
         direction = SDL_MOUSEWHEEL_FLIPPED;
     }
 
-    if ([event hasPreciseScrollingDeltas]) {
+    if (Cocoa_EventHasPreciseScrollingDeltas(event)) {
         x *= 0.1;
         y *= 0.1;
     }

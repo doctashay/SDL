@@ -25,6 +25,89 @@
 
 #import <Cocoa/Cocoa.h>
 
+#ifndef NSWindowDelegate
+#define SDL_NSWindowDelegate
+#else
+#define SDL_NSWindowDelegate <NSWindowDelegate>
+#endif
+
+#ifndef NSApplicationPresentationOptions
+typedef NSUInteger NSApplicationPresentationOptions;
+#endif
+
+#ifndef NSTouchPhase
+typedef NSUInteger NSTouchPhase;
+#endif
+
+#ifndef NSWindowStyleMaskBorderless
+#define NSWindowStyleMaskBorderless NSBorderlessWindowMask
+#define NSWindowStyleMaskTitled NSTitledWindowMask
+#define NSWindowStyleMaskClosable NSClosableWindowMask
+#define NSWindowStyleMaskMiniaturizable NSMiniaturizableWindowMask
+#define NSWindowStyleMaskResizable NSResizableWindowMask
+#endif
+
+#ifndef NSWindowCollectionBehaviorFullScreenPrimary
+#define NSWindowCollectionBehaviorFullScreenPrimary 0
+#endif
+#ifndef NSWindowCollectionBehaviorFullScreenNone
+#define NSWindowCollectionBehaviorFullScreenNone 0
+#endif
+#ifndef NSWindowTabbingModeDisallowed
+#define NSWindowTabbingModeDisallowed 0
+#endif
+
+#ifndef NSWindowDidChangeOcclusionStateNotification
+#define NSWindowDidChangeOcclusionStateNotification nil
+#endif
+#ifndef NSWindowWillStartLiveResizeNotification
+#define NSWindowWillStartLiveResizeNotification nil
+#endif
+#ifndef NSWindowDidEndLiveResizeNotification
+#define NSWindowDidEndLiveResizeNotification nil
+#endif
+#ifndef NSWindowDidChangeBackingPropertiesNotification
+#define NSWindowDidChangeBackingPropertiesNotification nil
+#endif
+#ifndef NSWindowWillEnterFullScreenNotification
+#define NSWindowWillEnterFullScreenNotification nil
+#endif
+#ifndef NSWindowDidEnterFullScreenNotification
+#define NSWindowDidEnterFullScreenNotification nil
+#endif
+#ifndef NSWindowWillExitFullScreenNotification
+#define NSWindowWillExitFullScreenNotification nil
+#endif
+#ifndef NSWindowDidExitFullScreenNotification
+#define NSWindowDidExitFullScreenNotification nil
+#endif
+#ifndef NSWindowOcclusionStateVisible
+#define NSWindowOcclusionStateVisible 1
+#endif
+#ifndef NSWindowCollectionBehaviorManaged
+#define NSWindowCollectionBehaviorManaged 0
+#endif
+#ifndef NSApplicationPresentationFullScreen
+#define NSApplicationPresentationFullScreen 0
+#endif
+#ifndef NSApplicationPresentationHideDock
+#define NSApplicationPresentationHideDock 0
+#endif
+#ifndef NSApplicationPresentationHideMenuBar
+#define NSApplicationPresentationHideMenuBar 0
+#endif
+#ifndef NSBackingPropertyOldScaleFactorKey
+#define NSBackingPropertyOldScaleFactorKey @"NSBackingPropertyOldScaleFactorKey"
+#endif
+
+@interface NSView (SDLLeopardWindowCompat)
+- (NSRect)convertRectToBacking:(NSRect)aRect;
+@end
+
+@interface NSWindow (SDLLeopardWindowCompat)
+- (double)backingScaleFactor;
+@end
+
 #ifdef SDL_VIDEO_OPENGL_EGL
 #include "../SDL_egl_c.h"
 #endif
@@ -42,7 +125,7 @@ typedef enum
     PENDING_OPERATION_ZOOM = 0x08
 } PendingWindowOperation;
 
-@interface SDL3Cocoa_WindowListener : NSResponder <NSWindowDelegate>
+@interface SDL3Cocoa_WindowListener : NSResponder SDL_NSWindowDelegate
 {
     /* SDL_CocoaWindowData owns this Listener and has a strong reference to it.
      * To avoid reference cycles, we could have either a weak or an
@@ -138,6 +221,28 @@ typedef enum
 @class SDL_CocoaVideoData;
 
 @interface SDL_CocoaWindowData : NSObject
+{
+    SDL_Window *window;
+    NSWindow *nswindow;
+    NSView *sdlContentView;
+    NSRect viewport;
+    NSMutableArray *nscontexts;
+    BOOL in_blocking_transition;
+    BOOL fullscreen_space_requested;
+    BOOL was_zoomed;
+    NSInteger window_number;
+    NSInteger flash_request;
+    SDL3Cocoa_WindowListener *listener;
+    NSModalSession modal_session;
+    SDL_CocoaVideoData *videodata;
+    bool pending_size;
+    bool pending_position;
+    bool border_toggled;
+    bool has_modal_dialog;
+#ifdef SDL_VIDEO_OPENGL_EGL
+    EGLSurface egl_surface;
+#endif
+}
 @property(nonatomic) SDL_Window *window;
 @property(nonatomic) NSWindow *nswindow;
 @property(nonatomic) NSView *sdlContentView;

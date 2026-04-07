@@ -122,7 +122,7 @@ static void Cocoa_DispatchEvent(NSEvent *theEvent)
 - (void)setAppleMenu:(NSMenu *)menu;
 @end
 
-@interface SDL3AppDelegate : NSObject <NSApplicationDelegate>
+@interface SDL3AppDelegate : NSObject
 {
   @public
     BOOL seenFirstActivate;
@@ -170,10 +170,12 @@ static void Cocoa_DispatchEvent(NSEvent *theEvent)
                        name:NSCurrentLocaleDidChangeNotification
                      object:nil];
 
-        [NSApp addObserver:self
-                forKeyPath:@"effectiveAppearance"
-                   options:NSKeyValueObservingOptionInitial
-                   context:nil];
+        if ([NSApp respondsToSelector:@selector(effectiveAppearance)]) {
+            [NSApp addObserver:self
+                    forKeyPath:@"effectiveAppearance"
+                       options:NSKeyValueObservingOptionInitial
+                       context:nil];
+        }
     }
 
     return self;
@@ -187,7 +189,9 @@ static void Cocoa_DispatchEvent(NSEvent *theEvent)
     [center removeObserver:self name:NSApplicationDidBecomeActiveNotification object:nil];
     [center removeObserver:self name:NSApplicationDidChangeScreenParametersNotification object:nil];
     [center removeObserver:self name:NSCurrentLocaleDidChangeNotification object:nil];
-    [NSApp removeObserver:self forKeyPath:@"effectiveAppearance"];
+    if ([NSApp respondsToSelector:@selector(effectiveAppearance)]) {
+        [NSApp removeObserver:self forKeyPath:@"effectiveAppearance"];
+    }
 
     // Remove our URL event handler only if we set it
     if ([NSApp delegate] == self) {
@@ -320,17 +324,8 @@ static void Cocoa_DispatchEvent(NSEvent *theEvent)
        behaviour there.  https://github.com/libsdl-org/SDL/issues/10340
        (13.6 still needs it, presumably 13.7 does, too.) */
     bool background_app_default = false;
-    if (@available(macOS 14.0, *)) {
-        background_app_default = true;  /* by default, don't explicitly activate the dock and then us again to force to foreground */
-    }
 
     if (!SDL_GetHintBoolean(SDL_HINT_MAC_BACKGROUND_APP, background_app_default)) {
-        // Get more aggressive for Catalina: activate the Dock first so we definitely reset all activation state.
-        for (NSRunningApplication *i in [NSRunningApplication runningApplicationsWithBundleIdentifier:@"com.apple.dock"]) {
-            [i activateWithOptions:NSApplicationActivateIgnoringOtherApps];
-            break;
-        }
-        SDL_Delay(300); // !!! FIXME: this isn't right.
         [NSApp activateIgnoringOtherApps:YES];
     }
 
@@ -408,7 +403,11 @@ static bool LoadMainMenuNibIfAvailable(void)
         mainNibFileName = [infoDict valueForKey:@"NSMainNibFile"];
 
         if (mainNibFileName) {
+#if MAC_OS_X_VERSION_MAX_ALLOWED >= 101300
             success = [[NSBundle mainBundle] loadNibNamed:mainNibFileName owner:[NSApplication sharedApplication] topLevelObjects:nil];
+#else
+            success = [[NSBundle mainBundle] loadNibNamed:mainNibFileName owner:[NSApplication sharedApplication]];
+#endif
         }
     }
 
@@ -510,7 +509,7 @@ static void CreateApplicationMenus(void)
 
 void Cocoa_RegisterApp(void)
 {
-    @autoreleasepool {
+    NSAutoreleasePool *pool = [[NSAutoreleasePool alloc] init];
         // This can get called more than once! Be careful what you initialize!
 
         if (NSApp == nil) {
@@ -520,7 +519,7 @@ void Cocoa_RegisterApp(void)
             s_bShouldHandleEventsInSDLApplication = true;
 
             if (!SDL_GetHintBoolean(SDL_HINT_MAC_BACKGROUND_APP, false)) {
-                [NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
+                if ([NSApp respondsToSelector:@selector(setActivationPolicy:)]) { [NSApp setActivationPolicy:0]; }
             }
 
             /* If there aren't already menus in place, look to see if there's
@@ -564,7 +563,7 @@ void Cocoa_RegisterApp(void)
                 appDelegate->seenFirstActivate = YES;
             }
         }
-    }
+    [pool drain];
 }
 
 Uint64 Cocoa_GetEventTimestamp(NSTimeInterval nsTimestamp)
@@ -616,7 +615,7 @@ int Cocoa_PumpEventsUntilDate(SDL_VideoDevice *_this, NSDate *expiration, bool a
 
 int Cocoa_WaitEventTimeout(SDL_VideoDevice *_this, Sint64 timeoutNS)
 {
-    @autoreleasepool {
+    NSAutoreleasePool *pool = [[NSAutoreleasePool alloc] init];
         if (timeoutNS > 0) {
             NSDate *limitDate = [NSDate dateWithTimeIntervalSinceNow:(double)timeoutNS / SDL_NS_PER_SECOND];
             return Cocoa_PumpEventsUntilDate(_this, limitDate, false);
@@ -626,20 +625,20 @@ int Cocoa_WaitEventTimeout(SDL_VideoDevice *_this, Sint64 timeoutNS)
             while (Cocoa_PumpEventsUntilDate(_this, [NSDate distantFuture], false) == 0) {
             }
         }
+        [pool drain];
         return 1;
-    }
 }
 
 void Cocoa_PumpEvents(SDL_VideoDevice *_this)
 {
-    @autoreleasepool {
+    NSAutoreleasePool *pool = [[NSAutoreleasePool alloc] init];
         Cocoa_PumpEventsUntilDate(_this, [NSDate distantPast], true);
-    }
+    [pool drain];
 }
 
 void Cocoa_SendWakeupEvent(SDL_VideoDevice *_this, SDL_Window *window)
 {
-    @autoreleasepool {
+    NSAutoreleasePool *pool = [[NSAutoreleasePool alloc] init];
         NSEvent *event = [NSEvent otherEventWithType:NSEventTypeApplicationDefined
                                             location:NSMakePoint(0, 0)
                                        modifierFlags:0
@@ -651,12 +650,12 @@ void Cocoa_SendWakeupEvent(SDL_VideoDevice *_this, SDL_Window *window)
                                                data2:0];
 
         [NSApp postEvent:event atStart:YES];
-    }
+    [pool drain];
 }
 
 bool Cocoa_SuspendScreenSaver(SDL_VideoDevice *_this)
 {
-    @autoreleasepool {
+    NSAutoreleasePool *pool = [[NSAutoreleasePool alloc] init];
         SDL_CocoaVideoData *data = (__bridge SDL_CocoaVideoData *)_this->internal;
 
         if (data.screensaver_assertion) {
@@ -672,13 +671,10 @@ bool Cocoa_SuspendScreenSaver(SDL_VideoDevice *_this)
              */
             IOPMAssertionID assertion = kIOPMNullAssertionID;
             NSString *name = [GetApplicationName() stringByAppendingString:@" using SDL_DisableScreenSaver"];
-            IOPMAssertionCreateWithDescription(kIOPMAssertPreventUserIdleDisplaySleep,
-                                               (__bridge CFStringRef)name,
-                                               NULL, NULL, NULL, 0, NULL,
-                                               &assertion);
+            (void)IOPMAssertionCreate(kIOPMAssertionTypeNoDisplaySleep, kIOPMAssertionLevelOn, &assertion);
             data.screensaver_assertion = assertion;
         }
-    }
+    [pool drain];
     return true;
 }
 

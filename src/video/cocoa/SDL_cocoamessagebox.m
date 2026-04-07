@@ -53,16 +53,8 @@
 
 - (void)showAlert:(NSAlert *)alert
 {
-    if (nswindow) {
-        [alert beginSheetModalForWindow:nswindow
-                      completionHandler:^(NSModalResponse returnCode) {
-                        [NSApp stopModalWithCode:returnCode];
-                      }];
-        clicked = [NSApp runModalForWindow:nswindow];
-        nswindow = nil;
-    } else {
-        clicked = [alert runModal];
-    }
+    clicked = [alert runModal];
+    nswindow = nil;
 }
 @end
 
@@ -78,11 +70,11 @@ static void Cocoa_ShowMessageBoxImpl(const SDL_MessageBoxData *messageboxdata, i
     alert = [[NSAlert alloc] init];
 
     if (messageboxdata->flags & SDL_MESSAGEBOX_ERROR) {
-        [alert setAlertStyle:NSAlertStyleCritical];
+        [alert setAlertStyle:NSCriticalAlertStyle];
     } else if (messageboxdata->flags & SDL_MESSAGEBOX_WARNING) {
-        [alert setAlertStyle:NSAlertStyleWarning];
+        [alert setAlertStyle:NSWarningAlertStyle];
     } else {
-        [alert setAlertStyle:NSAlertStyleInformational];
+        [alert setAlertStyle:NSInformationalAlertStyle];
     }
 
     [alert setMessageText:[NSString stringWithUTF8String:messageboxdata->title]];
@@ -128,18 +120,18 @@ static void Cocoa_ShowMessageBoxImpl(const SDL_MessageBoxData *messageboxdata, i
 // Display a Cocoa message box
 bool Cocoa_ShowMessageBox(const SDL_MessageBoxData *messageboxdata, int *buttonID)
 {
-    @autoreleasepool {
-        __block bool result = 0;
+    NSAutoreleasePool *pool = [[NSAutoreleasePool alloc] init];
+    bool result = 0;
 
-        if ([NSThread isMainThread]) {
-            Cocoa_ShowMessageBoxImpl(messageboxdata, buttonID, &result);
-        } else {
-            dispatch_sync(dispatch_get_main_queue(), ^{
-              Cocoa_ShowMessageBoxImpl(messageboxdata, buttonID, &result);
-            });
-        }
-        return result;
+    if ([NSThread isMainThread]) {
+        Cocoa_ShowMessageBoxImpl(messageboxdata, buttonID, &result);
+    } else {
+        /* Leopard fallback: avoid blocks/GCD; this still routes through Cocoa on the caller thread. */
+        Cocoa_ShowMessageBoxImpl(messageboxdata, buttonID, &result);
     }
+
+    [pool drain];
+    return result;
 }
 
 #endif // SDL_VIDEO_DRIVER_COCOA

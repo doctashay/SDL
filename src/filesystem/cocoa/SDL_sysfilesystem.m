@@ -33,199 +33,210 @@
 
 char *SDL_SYS_GetBasePath(void)
 {
-    @autoreleasepool {
-        NSBundle *bundle = [NSBundle mainBundle];
-        const char *baseType = [[[bundle infoDictionary] objectForKey:@"SDL_FILESYSTEM_BASE_DIR_TYPE"] UTF8String];
-        const char *base = NULL;
-        char *result = NULL;
+    NSAutoreleasePool *pool = [[NSAutoreleasePool alloc] init];
+    NSBundle *bundle = [NSBundle mainBundle];
+    const char *baseType = [[[bundle infoDictionary] objectForKey:@"SDL_FILESYSTEM_BASE_DIR_TYPE"] UTF8String];
+    const char *base = NULL;
+    char *result = NULL;
 
-        if (baseType == NULL) {
-            baseType = "resource";
-        }
-        if (SDL_strcasecmp(baseType, "bundle") == 0) {
-            base = [[bundle bundlePath] fileSystemRepresentation];
-        } else if (SDL_strcasecmp(baseType, "parent") == 0) {
-            base = [[[bundle bundlePath] stringByDeletingLastPathComponent] fileSystemRepresentation];
-        } else {
-            // this returns the exedir for non-bundled  and the resourceDir for bundled apps
-            base = [[bundle resourcePath] fileSystemRepresentation];
-        }
-
-        if (base) {
-            const size_t len = SDL_strlen(base) + 2;
-            result = (char *)SDL_malloc(len);
-            if (result != NULL) {
-                SDL_snprintf(result, len, "%s/", base);
-            }
-        }
-
-        return result;
+    if (baseType == NULL) {
+        baseType = "resource";
     }
+    if (SDL_strcasecmp(baseType, "bundle") == 0) {
+        base = [[bundle bundlePath] fileSystemRepresentation];
+    } else if (SDL_strcasecmp(baseType, "parent") == 0) {
+        base = [[[bundle bundlePath] stringByDeletingLastPathComponent] fileSystemRepresentation];
+    } else {
+        base = [[bundle resourcePath] fileSystemRepresentation];
+    }
+
+    if (base) {
+        const size_t len = SDL_strlen(base) + 2;
+        result = (char *)SDL_malloc(len);
+        if (result != NULL) {
+            SDL_snprintf(result, len, "%s/", base);
+        }
+    }
+
+    [pool drain];
+    return result;
 }
 
 char *SDL_SYS_GetPrefPath(const char *org, const char *app)
 {
-    @autoreleasepool {
-        char *result = NULL;
-        NSArray *array;
+    NSAutoreleasePool *pool = [[NSAutoreleasePool alloc] init];
+    char *result = NULL;
+    NSArray *array;
 
 #ifndef SDL_PLATFORM_TVOS
-        array = NSSearchPathForDirectoriesInDomains(NSApplicationSupportDirectory, NSUserDomainMask, YES);
+    array = NSSearchPathForDirectoriesInDomains(NSApplicationSupportDirectory, NSUserDomainMask, YES);
 #else
-        /* tvOS does not have persistent local storage!
-         * The only place on-device where we can store data is
-         * a cache directory that the OS can empty at any time.
-         *
-         * It's therefore very likely that save data will be erased
-         * between sessions. If you want your app's save data to
-         * actually stick around, you'll need to use iCloud storage.
-         */
-        {
-            static bool shown = false;
-            if (!shown) {
-                shown = true;
-                SDL_LogCritical(SDL_LOG_CATEGORY_SYSTEM, "tvOS does not have persistent local storage! Use iCloud storage if you want your data to persist between sessions.");
-            }
+    {
+        static bool shown = false;
+        if (!shown) {
+            shown = true;
+            SDL_LogCritical(SDL_LOG_CATEGORY_SYSTEM, "tvOS does not have persistent local storage! Use iCloud storage if you want your data to persist between sessions.");
         }
-
-        array = NSSearchPathForDirectoriesInDomains(NSCachesDirectory, NSUserDomainMask, YES);
-#endif // !SDL_PLATFORM_TVOS
-
-        if ([array count] > 0) { // we only want the first item in the list.
-            NSString *str = [array objectAtIndex:0];
-            const char *base = [str fileSystemRepresentation];
-            if (base) {
-                const size_t len = SDL_strlen(base) + SDL_strlen(org) + SDL_strlen(app) + 4;
-                result = (char *)SDL_malloc(len);
-                if (result != NULL) {
-                    if (*org) {
-                        SDL_snprintf(result, len, "%s/%s/%s/", base, org, app);
-                    } else {
-                        SDL_snprintf(result, len, "%s/%s/", base, app);
-                    }
-                    for (char *ptr = result + 1; *ptr; ptr++) {
-                        if (*ptr == '/') {
-                            *ptr = '\0';
-                            mkdir(result, 0700);
-                            *ptr = '/';
-                        }
-                    }
-                    mkdir(result, 0700);
-                }
-            }
-        }
-
-        return result;
     }
+    array = NSSearchPathForDirectoriesInDomains(NSCachesDirectory, NSUserDomainMask, YES);
+#endif
+
+    if ([array count] > 0) {
+        NSString *str = [array objectAtIndex:0];
+        const char *base = [str fileSystemRepresentation];
+        if (base) {
+            const size_t len = SDL_strlen(base) + SDL_strlen(org) + SDL_strlen(app) + 4;
+            result = (char *)SDL_malloc(len);
+            if (result != NULL) {
+                char *ptr;
+                if (*org) {
+                    SDL_snprintf(result, len, "%s/%s/%s/", base, org, app);
+                } else {
+                    SDL_snprintf(result, len, "%s/%s/", base, app);
+                }
+                for (ptr = result + 1; *ptr; ptr++) {
+                    if (*ptr == '/') {
+                        *ptr = '\0';
+                        mkdir(result, 0700);
+                        *ptr = '/';
+                    }
+                }
+                mkdir(result, 0700);
+            }
+        }
+    }
+
+    [pool drain];
+    return result;
 }
 
 char *SDL_SYS_GetUserFolder(SDL_Folder folder)
 {
-    @autoreleasepool {
+    NSAutoreleasePool *pool = [[NSAutoreleasePool alloc] init];
 #ifdef SDL_PLATFORM_TVOS
-        SDL_SetError("tvOS does not have persistent storage");
-        return NULL;
+    SDL_SetError("tvOS does not have persistent storage");
+    [pool drain];
+    return NULL;
 #else
-        char *result = NULL;
-        const char *base;
-        NSArray *array;
-        NSSearchPathDirectory dir;
-        NSString *str;
-        char *ptr;
+    char *result = NULL;
+    const char *base;
+    NSArray *array;
+    NSSearchPathDirectory dir;
+    NSString *str;
+    char *ptr;
 
-        switch (folder) {
-        case SDL_FOLDER_HOME:
-            base = SDL_getenv("HOME");
-
-            if (!base) {
-                SDL_SetError("No $HOME environment variable available");
-                return NULL;
-            }
-
-            goto append_slash;
-
-        case SDL_FOLDER_DESKTOP:
-            dir = NSDesktopDirectory;
-            break;
-
-        case SDL_FOLDER_DOCUMENTS:
-            dir = NSDocumentDirectory;
-            break;
-
-        case SDL_FOLDER_DOWNLOADS:
-            dir = NSDownloadsDirectory;
-            break;
-
-        case SDL_FOLDER_MUSIC:
-            dir = NSMusicDirectory;
-            break;
-
-        case SDL_FOLDER_PICTURES:
-            dir = NSPicturesDirectory;
-            break;
-
-        case SDL_FOLDER_PUBLICSHARE:
-            dir = NSSharedPublicDirectory;
-            break;
-
-        case SDL_FOLDER_SAVEDGAMES:
-            SDL_SetError("Saved games folder not supported on Cocoa");
-            return NULL;
-
-        case SDL_FOLDER_SCREENSHOTS:
-            SDL_SetError("Screenshots folder not supported on Cocoa");
-            return NULL;
-
-        case SDL_FOLDER_TEMPLATES:
-            SDL_SetError("Templates folder not supported on Cocoa");
-            return NULL;
-
-        case SDL_FOLDER_VIDEOS:
-            dir = NSMoviesDirectory;
-            break;
-
-        default:
-            SDL_SetError("Invalid SDL_Folder: %d", (int) folder);
-            return NULL;
-        };
-
-        array = NSSearchPathForDirectoriesInDomains(dir, NSUserDomainMask, YES);
-
-        if ([array count] <= 0) {
-            SDL_SetError("Directory not found");
-            return NULL;
-        }
-
-        str = [array objectAtIndex:0];
-        base = [str fileSystemRepresentation];
+    switch (folder) {
+    case SDL_FOLDER_HOME:
+        base = SDL_getenv("HOME");
         if (!base) {
-            SDL_SetError("Couldn't get folder path");
+            SDL_SetError("No $HOME environment variable available");
+            [pool drain];
             return NULL;
         }
+        goto append_slash;
+    case SDL_FOLDER_DESKTOP:
+        dir = NSDesktopDirectory;
+        break;
+    case SDL_FOLDER_DOCUMENTS:
+        dir = NSDocumentDirectory;
+        break;
+    case SDL_FOLDER_DOWNLOADS:
+        dir = NSDownloadsDirectory;
+        break;
+    case SDL_FOLDER_MUSIC:
+#ifdef NSMusicDirectory
+        dir = NSMusicDirectory;
+#else
+        SDL_SetError("Music folder not supported on this Cocoa SDK");
+        [pool drain];
+        return NULL;
+#endif
+        break;
+    case SDL_FOLDER_PICTURES:
+#ifdef NSPicturesDirectory
+        dir = NSPicturesDirectory;
+#else
+        SDL_SetError("Pictures folder not supported on this Cocoa SDK");
+        [pool drain];
+        return NULL;
+#endif
+        break;
+    case SDL_FOLDER_PUBLICSHARE:
+#ifdef NSSharedPublicDirectory
+        dir = NSSharedPublicDirectory;
+#else
+        SDL_SetError("Public share folder not supported on this Cocoa SDK");
+        [pool drain];
+        return NULL;
+#endif
+        break;
+    case SDL_FOLDER_SAVEDGAMES:
+        SDL_SetError("Saved games folder not supported on Cocoa");
+        [pool drain];
+        return NULL;
+    case SDL_FOLDER_SCREENSHOTS:
+        SDL_SetError("Screenshots folder not supported on Cocoa");
+        [pool drain];
+        return NULL;
+    case SDL_FOLDER_TEMPLATES:
+        SDL_SetError("Templates folder not supported on Cocoa");
+        [pool drain];
+        return NULL;
+    case SDL_FOLDER_VIDEOS:
+#ifdef NSMoviesDirectory
+        dir = NSMoviesDirectory;
+#else
+        SDL_SetError("Videos folder not supported on this Cocoa SDK");
+        [pool drain];
+        return NULL;
+#endif
+        break;
+    default:
+        SDL_SetError("Invalid SDL_Folder: %d", (int)folder);
+        [pool drain];
+        return NULL;
+    };
+
+    array = NSSearchPathForDirectoriesInDomains(dir, NSUserDomainMask, YES);
+    if ([array count] <= 0) {
+        SDL_SetError("Directory not found");
+        [pool drain];
+        return NULL;
+    }
+
+    str = [array objectAtIndex:0];
+    base = [str fileSystemRepresentation];
+    if (!base) {
+        SDL_SetError("Couldn't get folder path");
+        [pool drain];
+        return NULL;
+    }
 
 append_slash:
-        result = SDL_malloc(SDL_strlen(base) + 2);
-        if (result == NULL) {
-            return NULL;
-        }
-
-        if (SDL_snprintf(result, SDL_strlen(base) + 2, "%s/", base) < 0) {
-            SDL_SetError("Couldn't snprintf folder path for Cocoa: %s", base);
-            SDL_free(result);
-            return NULL;
-        }
-
-        for (ptr = result + 1; *ptr; ptr++) {
-            if (*ptr == '/') {
-                *ptr = '\0';
-                mkdir(result, 0700);
-                *ptr = '/';
-            }
-        }
-
-        return result;
-#endif // SDL_PLATFORM_TVOS
+    result = SDL_malloc(SDL_strlen(base) + 2);
+    if (result == NULL) {
+        [pool drain];
+        return NULL;
     }
+
+    if (SDL_snprintf(result, SDL_strlen(base) + 2, "%s/", base) < 0) {
+        SDL_SetError("Couldn't snprintf folder path for Cocoa: %s", base);
+        SDL_free(result);
+        [pool drain];
+        return NULL;
+    }
+
+    for (ptr = result + 1; *ptr; ptr++) {
+        if (*ptr == '/') {
+            *ptr = '\0';
+            mkdir(result, 0700);
+            *ptr = '/';
+        }
+    }
+
+    [pool drain];
+    return result;
+#endif
 }
 
 #endif // SDL_FILESYSTEM_COCOA

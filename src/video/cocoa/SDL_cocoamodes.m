@@ -32,6 +32,116 @@
 #include <CoreVideo/CVBase.h>
 #include <CoreVideo/CVDisplayLink.h>
 
+#if MAC_OS_X_VERSION_MIN_REQUIRED < 1060
+typedef CFDictionaryRef CGDisplayModeRef;
+
+static bool LegacyGetIntValue(CFDictionaryRef mode, CFStringRef key, long *value)
+{
+    CFNumberRef number = (CFNumberRef)CFDictionaryGetValue(mode, key);
+    if (!number) {
+        return false;
+    }
+    return CFNumberGetValue(number, kCFNumberLongType, value);
+}
+
+static bool LegacyGetDoubleValue(CFDictionaryRef mode, CFStringRef key, double *value)
+{
+    CFNumberRef number = (CFNumberRef)CFDictionaryGetValue(mode, key);
+    if (!number) {
+        return false;
+    }
+    return CFNumberGetValue(number, kCFNumberDoubleType, value);
+}
+
+static size_t CGDisplayModeGetWidth(CGDisplayModeRef mode)
+{
+    long value = 0;
+    LegacyGetIntValue(mode, kCGDisplayWidth, &value);
+    return (size_t)value;
+}
+
+static size_t CGDisplayModeGetHeight(CGDisplayModeRef mode)
+{
+    long value = 0;
+    LegacyGetIntValue(mode, kCGDisplayHeight, &value);
+    return (size_t)value;
+}
+
+static size_t CGDisplayModeGetPixelWidth(CGDisplayModeRef mode)
+{
+    return CGDisplayModeGetWidth(mode);
+}
+
+static size_t CGDisplayModeGetPixelHeight(CGDisplayModeRef mode)
+{
+    return CGDisplayModeGetHeight(mode);
+}
+
+static uint32_t CGDisplayModeGetIOFlags(CGDisplayModeRef mode)
+{
+    long value = 0;
+    LegacyGetIntValue(mode, kCGDisplayIOFlags, &value);
+    return (uint32_t)value;
+}
+
+static double CGDisplayModeGetRefreshRate(CGDisplayModeRef mode)
+{
+    double value = 0.0;
+    LegacyGetDoubleValue(mode, kCGDisplayRefreshRate, &value);
+    return value;
+}
+
+static bool CGDisplayModeIsUsableForDesktopGUI(CGDisplayModeRef mode)
+{
+    CFBooleanRef usable = (CFBooleanRef)CFDictionaryGetValue(mode, kCGDisplayModeUsableForDesktopGUI);
+    return usable ? CFBooleanGetValue(usable) : true;
+}
+
+static CFStringRef CGDisplayModeCopyPixelEncoding(CGDisplayModeRef mode)
+{
+    long bits = 0;
+
+    if (!LegacyGetIntValue(mode, kCGDisplayBitsPerPixel, &bits)) {
+        return NULL;
+    }
+
+    if (bits >= 30) {
+        return (CFStringRef)CFRetain(CFSTR(kIO30BitDirectPixels));
+    } else if (bits >= 32) {
+        return (CFStringRef)CFRetain(CFSTR(IO32BitDirectPixels));
+    } else if (bits >= 16) {
+        return (CFStringRef)CFRetain(CFSTR(IO16BitDirectPixels));
+    }
+
+    return NULL;
+}
+
+static CGDisplayModeRef CGDisplayCopyDisplayMode(CGDirectDisplayID display)
+{
+    CFDictionaryRef mode = CGDisplayCurrentMode(display);
+    return mode ? (CGDisplayModeRef)CFRetain(mode) : NULL;
+}
+
+static void CGDisplayModeRelease(CGDisplayModeRef mode)
+{
+    if (mode) {
+        CFRelease(mode);
+    }
+}
+
+static CFArrayRef CGDisplayCopyAllDisplayModes(CGDirectDisplayID display, CFDictionaryRef options)
+{
+    (void)options;
+    return CGDisplayAvailableModes(display);
+}
+
+static CGError CGDisplaySetDisplayMode(CGDirectDisplayID display, CGDisplayModeRef mode, CFDictionaryRef options)
+{
+    (void)options;
+    return CGDisplaySwitchToMode(display, mode);
+}
+#endif
+
 #if (IOGRAPHICSTYPES_REV < 40)
 #define kDisplayModeNativeFlag 0x02000000
 #endif
@@ -283,15 +393,15 @@ static bool GetDisplayMode(CGDisplayModeRef vidmode, bool vidmodeCurrent, CFArra
 
 static char *Cocoa_GetDisplayName(CGDirectDisplayID displayID)
 {
-    if (@available(macOS 10.15, *)) {
-        NSScreen *screen = GetNSScreenForDisplayID(displayID);
-        if (screen) {
-            const char *name = [screen.localizedName UTF8String];
-            if (name) {
-                return SDL_strdup(name);
-            }
+#if MAC_OS_X_VERSION_MIN_REQUIRED >= 101500
+    NSScreen *screen = GetNSScreenForDisplayID(displayID);
+    if (screen && [screen respondsToSelector:@selector(localizedName)]) {
+        const char *name = [[screen localizedName] UTF8String];
+        if (name) {
+            return SDL_strdup(name);
         }
     }
+#endif
 
     // This API is deprecated in 10.9 with no good replacement (as of 10.15).
     io_service_t servicePort = CGDisplayIOServicePort(displayID);
@@ -308,19 +418,21 @@ static char *Cocoa_GetDisplayName(CGDirectDisplayID displayID)
 
 static void Cocoa_GetHDRProperties(CGDirectDisplayID displayID, SDL_HDROutputProperties *HDR)
 {
+    (void)displayID;
     HDR->SDR_white_level = 1.0f;
     HDR->HDR_headroom = 1.0f;
-
-    if (@available(macOS 10.15, *)) {
+#if MAC_OS_X_VERSION_MIN_REQUIRED >= 101500
+    {
         NSScreen *screen = GetNSScreenForDisplayID(displayID);
-        if (screen) {
-            if (screen.maximumExtendedDynamicRangeColorComponentValue > 1.0f) {
-                HDR->HDR_headroom = screen.maximumExtendedDynamicRangeColorComponentValue;
-            } else {
-                HDR->HDR_headroom = screen.maximumPotentialExtendedDynamicRangeColorComponentValue;
+        if (screen && [screen respondsToSelector:@selector(maximumExtendedDynamicRangeColorComponentValue)]) {
+            if ([screen maximumExtendedDynamicRangeColorComponentValue] > 1.0f) {
+                HDR->HDR_headroom = [screen maximumExtendedDynamicRangeColorComponentValue];
+            } else if ([screen respondsToSelector:@selector(maximumPotentialExtendedDynamicRangeColorComponentValue)]) {
+                HDR->HDR_headroom = [screen maximumPotentialExtendedDynamicRangeColorComponentValue];
             }
         }
     }
+#endif
 }
 
 static bool Cocoa_GetUsableBounds(CGDirectDisplayID displayID, SDL_Rect *rect)
@@ -503,7 +615,7 @@ static void Cocoa_DisplayReconfigurationCallback(CGDirectDisplayID displayid, CG
 
 void Cocoa_InitModes(SDL_VideoDevice *_this)
 {
-    @autoreleasepool {
+    NSAutoreleasePool *pool = [[NSAutoreleasePool alloc] init];
         SDL_CocoaVideoData *data = (__bridge SDL_CocoaVideoData *)_this->internal;
         CGDisplayErr result;
         CGDisplayCount numDisplays = 0;
@@ -550,7 +662,7 @@ void Cocoa_InitModes(SDL_VideoDevice *_this)
             }
         }
         SDL_small_free(displays, isstack);
-    }
+    [pool drain];
 }
 
 void Cocoa_UpdateDisplays(SDL_VideoDevice *_this)
@@ -601,8 +713,10 @@ bool Cocoa_GetDisplayModes(SDL_VideoDevice *_this, SDL_VideoDisplay *display)
     CVDisplayLinkRef link = NULL;
     CFArrayRef modes;
     CFDictionaryRef dict = NULL;
+#if MAC_OS_X_VERSION_MIN_REQUIRED >= 1060
     const CFStringRef dictkeys[] = { kCGDisplayShowDuplicateLowResolutionModes };
     const CFBooleanRef dictvalues[] = { kCFBooleanTrue };
+#endif
 
     CVDisplayLinkCreateWithCGDisplay(data->display, &link);
 
@@ -618,12 +732,14 @@ bool Cocoa_GetDisplayModes(SDL_VideoDevice *_this, SDL_VideoDisplay *display)
      * https://bugzilla.libsdl.org/show_bug.cgi?id=4822
      */
 
+#if MAC_OS_X_VERSION_MIN_REQUIRED >= 1060
     dict = CFDictionaryCreate(NULL,
                               (const void **)dictkeys,
                               (const void **)dictvalues,
                               1,
                               &kCFCopyStringDictionaryKeyCallBacks,
                               &kCFTypeDictionaryValueCallBacks);
+#endif
 
     modes = CGDisplayCopyAllDisplayModes(data->display, dict);
 

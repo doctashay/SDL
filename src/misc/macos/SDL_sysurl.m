@@ -28,15 +28,15 @@
 
 bool SDL_SYS_OpenURL(const char *url)
 {
-    @autoreleasepool {
-        CFURLRef cfurl = CFURLCreateWithBytes(NULL, (const UInt8 *)url, SDL_strlen(url), kCFStringEncodingUTF8, NULL);
-        OSStatus status = LSOpenCFURLRef(cfurl, NULL);
-        CFRelease(cfurl);
-        if (status != noErr) {
-            return SDL_SetError("LSOpenCFURLRef() failed: %d", status);
-        }
-        return true;
+    NSAutoreleasePool *pool = [[NSAutoreleasePool alloc] init];
+    CFURLRef cfurl = CFURLCreateWithBytes(NULL, (const UInt8 *)url, SDL_strlen(url), kCFStringEncodingUTF8, NULL);
+    OSStatus status = LSOpenCFURLRef(cfurl, NULL);
+    CFRelease(cfurl);
+    [pool drain];
+    if (status != noErr) {
+        return SDL_SetError("LSOpenCFURLRef() failed: %ld", (long)status);
     }
+    return true;
 }
 
 #endif // SDL_PLATFORM_MACOS

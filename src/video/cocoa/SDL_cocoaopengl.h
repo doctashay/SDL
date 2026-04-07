@@ -44,6 +44,7 @@ struct SDL_GLDriverData
     SDL_AtomicInt dirty;
     SDL_Window *window;
     CVDisplayLinkRef displayLink;
+    NSOpenGLPixelFormat *openglPixelFormat;
   @public
     SDL_Mutex *swapIntervalMutex;
   @public
