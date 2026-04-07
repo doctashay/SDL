@@ -242,9 +242,27 @@ SDL_GLContext Cocoa_GL_CreateContext(SDL_VideoDevice *_this, SDL_Window *window)
         int opaque;
 
         if (_this->gl_config.profile_mask == SDL_GL_CONTEXT_PROFILE_ES) {
+#ifdef SDL_VIDEO_OPENGL_EGL
+            Cocoa_GL_UnloadLibrary(_this);
+            _this->GL_LoadLibrary = Cocoa_GLES_LoadLibrary;
+            _this->GL_GetProcAddress = Cocoa_GLES_GetProcAddress;
+            _this->GL_UnloadLibrary = Cocoa_GLES_UnloadLibrary;
+            _this->GL_CreateContext = Cocoa_GLES_CreateContext;
+            _this->GL_MakeCurrent = Cocoa_GLES_MakeCurrent;
+            _this->GL_SetSwapInterval = Cocoa_GLES_SetSwapInterval;
+            _this->GL_GetSwapInterval = Cocoa_GLES_GetSwapInterval;
+            _this->GL_SwapWindow = Cocoa_GLES_SwapWindow;
+            _this->GL_DestroyContext = Cocoa_GLES_DestroyContext;
+
+            if (!Cocoa_GLES_LoadLibrary(_this, NULL)) {
+                return NULL;
+            }
+            return Cocoa_GLES_CreateContext(_this, window);
+#else
             [pool drain];
-            SDL_SetError("OpenGL ES is not supported by the Leopard Cocoa OpenGL backend");
+            SDL_SetError("SDL not configured with EGL support");
             return NULL;
+#endif
         }
 
         if (_this->gl_config.profile_mask == SDL_GL_CONTEXT_PROFILE_CORE) {
